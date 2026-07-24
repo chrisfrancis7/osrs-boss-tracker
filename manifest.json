@@ -1,0 +1,15 @@
+{
+  "name": "Boss Kill Tracker",
+  "short_name": "Boss Tracker",
+  "description": "Track daily OSRS boss kills against goals",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1a1512",
+  "theme_color": "#1a1512",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
