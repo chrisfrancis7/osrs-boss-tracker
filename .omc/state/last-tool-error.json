@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/chrisfrancis/dev/personal_projects/osrs-boss-tracker\\nUA=\\\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36\\\"...",
-  "error": "Exit code 1\n(eval):15: bad substitution",
-  "timestamp": "2026-07-24T21:19:25.599Z",
-  "retry_count": 1
-}
