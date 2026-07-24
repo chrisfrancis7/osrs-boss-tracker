@@ -1,4 +1,4 @@
-const CACHE_NAME = "boss-tracker-v1";
+const CACHE_NAME = "boss-tracker-v2";
 const PRECACHE_URLS = [
   "./",
   "index.html",
@@ -76,7 +76,13 @@ const PRECACHE_URLS = [
   "assets/bosses/crystalline-hunllef.png",
   "assets/bosses/corrupted-hunllef.png",
   "assets/bosses/tztok-jad.png",
-  "assets/bosses/tzkal-zuk.png"
+  "assets/bosses/tzkal-zuk.png",
+  "assets/bosses/sol-heredit.png",
+  "assets/bosses/chambers-of-xeric.png",
+  "assets/bosses/chambers-of-xeric-cm.png",
+  "assets/bosses/theatre-of-blood.png",
+  "assets/bosses/theatre-of-blood-hm.png",
+  "assets/bosses/tombs-of-amascut.png"
 ];
 
 self.addEventListener("install", (event) => {

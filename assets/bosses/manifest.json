@@ -66,5 +66,11 @@
   {"name": "Crystalline Hunllef", "file": "crystalline-hunllef.png"},
   {"name": "Corrupted Hunllef", "file": "corrupted-hunllef.png"},
   {"name": "TzTok-Jad", "file": "tztok-jad.png"},
-  {"name": "TzKal-Zuk", "file": "tzkal-zuk.png"}
+  {"name": "TzKal-Zuk", "file": "tzkal-zuk.png"},
+  {"name": "Sol Heredit", "file": "sol-heredit.png"},
+  {"name": "Chambers of Xeric", "file": "chambers-of-xeric.png"},
+  {"name": "Chambers of Xeric: Challenge Mode", "file": "chambers-of-xeric-cm.png"},
+  {"name": "Theatre of Blood", "file": "theatre-of-blood.png"},
+  {"name": "Theatre of Blood: Hard Mode", "file": "theatre-of-blood-hm.png"},
+  {"name": "Tombs of Amascut", "file": "tombs-of-amascut.png"}
 ]
