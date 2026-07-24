@@ -76,10 +76,17 @@ function renderBossKillCard(boss, count, onChange) {
   const dec = card.querySelector('[data-act="dec"]');
   const inc = card.querySelector('[data-act="inc"]');
   const quick = card.querySelector('[data-act="quick"]');
+  const countLabel = card.querySelector(".boss-count-label b");
+  const progressFill = card.querySelector(".progress-fill");
 
   const commit = (val) => {
     const n = Math.max(0, parseInt(val, 10) || 0);
     input.value = n;
+    const newPct = Math.min(100, Math.round((n / goal) * 100));
+    const newComplete = n >= goal;
+    countLabel.textContent = n;
+    progressFill.style.width = `${newPct}%`;
+    progressFill.classList.toggle("complete", newComplete);
     onChange(n);
   };
 
