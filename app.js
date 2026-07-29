@@ -99,12 +99,95 @@ function renderBossKillCard(boss, count, onChange) {
   return card;
 }
 
-function renderGroupKillCard(group, members, kills, onChangeMember) {
+// group.mode: "sum" (default) — kills across all members add up to one shared goal.
+// group.mode: "either" — each member has its own goal; hitting any one member's
+//   goal completes the whole group for the day.
+function groupStatusForDate(group, dayKills) {
+  if (group.mode === "either") {
+    const memberGoals = group.memberGoals || {};
+    let complete = false;
+    let anyLogged = false;
+    for (const id of group.bossIds) {
+      const count = dayKills[id] || 0;
+      if (count > 0) anyLogged = true;
+      if (count >= (memberGoals[id] || 1)) complete = true;
+    }
+    return { complete, anyLogged };
+  }
   const goal = group.goal || 1;
-  const memberCounts = new Map(members.map((b) => [b.id, kills[b.id] || 0]));
+  const total = group.bossIds.reduce((sum, id) => sum + (dayKills[id] || 0), 0);
+  return { complete: total >= goal, anyLogged: total > 0 };
+}
 
+function renderGroupKillCard(group, members, kills, onChangeMember) {
+  const memberCounts = new Map(members.map((b) => [b.id, kills[b.id] || 0]));
   const card = document.createElement("div");
   card.className = "group-card";
+
+  if (group.mode === "either") {
+    const memberGoals = group.memberGoals || {};
+    card.innerHTML = `
+      <div class="group-header">
+        <div class="group-name">${group.name}</div>
+        <div class="group-mode-badge">Any one</div>
+      </div>
+      <div class="group-members"></div>
+    `;
+    const membersEl = card.querySelector(".group-members");
+    const badge = card.querySelector(".group-mode-badge");
+
+    const refreshComplete = () => {
+      const complete = members.some((b) => memberCounts.get(b.id) >= (memberGoals[b.id] || 1));
+      card.classList.toggle("complete", complete);
+      badge.textContent = complete ? "✓ Complete" : "Any one";
+      badge.classList.toggle("complete", complete);
+    };
+
+    for (const boss of members) {
+      const goal = memberGoals[boss.id] || 1;
+      const row = document.createElement("div");
+      row.className = "group-member-row";
+      row.innerHTML = `
+        <img class="group-member-img" src="assets/bosses/${boss.image}" alt="${boss.name}">
+        <div class="group-member-info">
+          <div class="group-member-name">${boss.name}</div>
+          <div class="group-member-goal"><b>${memberCounts.get(boss.id)}</b> / ${goal}</div>
+        </div>
+        <div class="group-member-controls">
+          <button class="stepper-btn small" data-act="dec">−</button>
+          <input class="count-input small" type="number" min="0" inputmode="numeric" value="${memberCounts.get(boss.id)}">
+          <button class="stepper-btn small" data-act="inc">+</button>
+        </div>
+      `;
+      const input = row.querySelector(".count-input");
+      const dec = row.querySelector('[data-act="dec"]');
+      const inc = row.querySelector('[data-act="inc"]');
+      const goalCountLabel = row.querySelector(".group-member-goal b");
+
+      const commit = (val) => {
+        const n = Math.max(0, parseInt(val, 10) || 0);
+        input.value = n;
+        memberCounts.set(boss.id, n);
+        goalCountLabel.textContent = n;
+        row.classList.toggle("complete", n >= goal);
+        refreshComplete();
+        onChangeMember(boss.id, n);
+      };
+
+      dec.addEventListener("click", () => commit((parseInt(input.value, 10) || 0) - 1));
+      inc.addEventListener("click", () => commit((parseInt(input.value, 10) || 0) + 1));
+      input.addEventListener("change", () => commit(input.value));
+
+      row.classList.toggle("complete", memberCounts.get(boss.id) >= goal);
+      membersEl.appendChild(row);
+    }
+
+    refreshComplete();
+    return card;
+  }
+
+  // "sum" mode — combined goal across all members
+  const goal = group.goal || 1;
   card.innerHTML = `
     <div class="group-header">
       <div class="group-name">${group.name}</div>
@@ -239,12 +322,12 @@ async function renderCalendarGrid() {
 
     let dotClass = "none";
     if (standaloneBosses.length > 0 || groups.length > 0) {
-      const groupTotals = groups.map((g) => g.bossIds.reduce((sum, id) => sum + (dayKills[id] || 0), 0));
+      const groupStatuses = groups.map((g) => groupStatusForDate(g, dayKills));
       const anyLogged =
-        standaloneBosses.some((b) => (dayKills[b.id] || 0) > 0) || groupTotals.some((t) => t > 0);
+        standaloneBosses.some((b) => (dayKills[b.id] || 0) > 0) || groupStatuses.some((s) => s.anyLogged);
       const allComplete =
         standaloneBosses.every((b) => (dayKills[b.id] || 0) >= (b.goal || 1)) &&
-        groups.every((g, i) => groupTotals[i] >= (g.goal || 1));
+        groupStatuses.every((s) => s.complete);
       if (allComplete) dotClass = "complete";
       else if (anyLogged) dotClass = "partial";
     }
@@ -340,8 +423,42 @@ function updateGroupBar() {
   document.getElementById("create-group-btn").addEventListener("click", openCreateGroupModal);
 }
 
-function openCreateGroupModal() {
+async function openCreateGroupModal() {
   const bossIds = [...state.groupSelection];
+  const allBosses = await DB.getBosses();
+  const selectedBosses = bossIds.map((id) => allBosses.find((b) => b.id === id)).filter(Boolean);
+  let mode = "sum";
+
+  function renderGoalSection() {
+    const el = document.getElementById("group-goal-section");
+    if (!el) return;
+    if (mode === "sum") {
+      el.innerHTML = `
+        <div class="form-row">
+          <div class="goal-label">Combined daily goal</div>
+          <input type="number" id="group-goal-input" class="goal-input" min="1" inputmode="numeric" value="1">
+        </div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div class="form-row">
+          <div class="goal-label">Goal for each (hitting any one completes the group)</div>
+          ${selectedBosses
+            .map(
+              (b) => `
+            <div class="either-goal-row">
+              <img src="assets/bosses/${b.image}" alt="${b.name}">
+              <div class="either-goal-name">${b.name}</div>
+              <input type="number" class="goal-input either-goal-input" data-boss-id="${b.id}" min="1" inputmode="numeric" value="1">
+            </div>
+          `
+            )
+            .join("")}
+        </div>
+      `;
+    }
+  }
+
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="modal-overlay">
       <div class="modal-sheet">
@@ -353,26 +470,49 @@ function openCreateGroupModal() {
           <div class="goal-label">Group name</div>
           <input type="text" id="group-name-input" class="search-input" placeholder="e.g. Wilderness bosses">
         </div>
-        <div class="form-row">
-          <div class="goal-label">Combined daily goal</div>
-          <input type="number" id="group-goal-input" class="goal-input" min="1" inputmode="numeric" value="1">
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="sum">All together</button>
+          <button type="button" class="mode-btn" data-mode="either">Any one (either/or)</button>
         </div>
+        <div class="mode-hint" id="mode-hint">Kills across all selected bosses add up to one shared goal.</div>
+        <div id="group-goal-section"></div>
         <button class="primary" id="group-create-confirm" style="width:100%;margin-top:14px;">Create Group</button>
       </div>
     </div>
   `;
+  renderGoalSection();
+
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("modal-overlay").addEventListener("click", (e) => {
     if (e.target.id === "modal-overlay") closeModal();
   });
+  document.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mode = btn.dataset.mode;
+      document.querySelectorAll(".mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      document.getElementById("mode-hint").textContent =
+        mode === "sum"
+          ? "Kills across all selected bosses add up to one shared goal."
+          : "Hitting the goal for any one boss below completes the group for the day.";
+      renderGoalSection();
+    });
+  });
   document.getElementById("group-create-confirm").addEventListener("click", async () => {
     const name = document.getElementById("group-name-input").value.trim();
-    const goal = Math.max(1, parseInt(document.getElementById("group-goal-input").value, 10) || 1);
     if (!name) {
       alert("Please enter a group name.");
       return;
     }
-    await DB.addGroup({ name, bossIds, goal });
+    if (mode === "sum") {
+      const goal = Math.max(1, parseInt(document.getElementById("group-goal-input").value, 10) || 1);
+      await DB.addGroup({ name, bossIds, mode: "sum", goal });
+    } else {
+      const memberGoals = {};
+      document.querySelectorAll(".either-goal-input").forEach((input) => {
+        memberGoals[Number(input.dataset.bossId)] = Math.max(1, parseInt(input.value, 10) || 1);
+      });
+      await DB.addGroup({ name, bossIds, mode: "either", memberGoals });
+    }
     state.groupSelection.clear();
     showToast(`${name} group created`);
     closeModal();
@@ -442,26 +582,35 @@ async function renderMyGroups(container) {
     return;
   }
   for (const group of groups) {
+    const mode = group.mode || "sum";
+    const memberGoals = group.memberGoals || {};
     const members = group.bossIds.map((id) => bossById.get(id)).filter(Boolean);
     const card = document.createElement("div");
     card.className = "group-settings-card";
     card.innerHTML = `
       <div class="group-settings-header">
         <div class="name">${group.name}</div>
-        <div>
-          <div class="goal-label">Combined goal</div>
-          <input class="goal-input group-goal-input" type="number" min="1" inputmode="numeric" value="${group.goal || 1}">
-        </div>
+        <div class="group-mode-tag">${mode === "either" ? "Any one" : "Combined"}</div>
         <button class="danger-link" data-act="delete-group">Delete group</button>
       </div>
+      ${
+        mode === "sum"
+          ? `<div class="group-settings-goal-row">
+               <div class="goal-label">Combined goal</div>
+               <input class="goal-input group-goal-input" type="number" min="1" inputmode="numeric" value="${group.goal || 1}">
+             </div>`
+          : ""
+      }
       <div class="group-settings-members"></div>
     `;
-    card.querySelector(".group-goal-input").addEventListener("change", async (e) => {
-      const n = Math.max(1, parseInt(e.target.value, 10) || 1);
-      e.target.value = n;
-      await DB.updateGroup(group.id, { goal: n });
-      showToast(`${group.name} goal set to ${n}`);
-    });
+    if (mode === "sum") {
+      card.querySelector(".group-goal-input").addEventListener("change", async (e) => {
+        const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+        e.target.value = n;
+        await DB.updateGroup(group.id, { goal: n });
+        showToast(`${group.name} goal set to ${n}`);
+      });
+    }
     card.querySelector('[data-act="delete-group"]').addEventListener("click", async () => {
       if (confirm(`Delete "${group.name}"? Its bosses will go back to being tracked individually.`)) {
         await DB.deleteGroup(group.id);
@@ -476,8 +625,22 @@ async function renderMyGroups(container) {
       memberRow.innerHTML = `
         <img src="assets/bosses/${boss.image}" alt="${boss.name}">
         <div class="name">${boss.name}</div>
+        ${
+          mode === "either"
+            ? `<input class="goal-input member-goal-input" type="number" min="1" inputmode="numeric" value="${memberGoals[boss.id] || 1}">`
+            : ""
+        }
         <button class="danger-link" data-act="remove-member">Remove</button>
       `;
+      if (mode === "either") {
+        memberRow.querySelector(".member-goal-input").addEventListener("change", async (e) => {
+          const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+          e.target.value = n;
+          const newGoals = { ...(group.memberGoals || {}), [boss.id]: n };
+          await DB.updateGroup(group.id, { memberGoals: newGoals });
+          showToast(`${boss.name} goal set to ${n}`);
+        });
+      }
       memberRow.querySelector('[data-act="remove-member"]').addEventListener("click", async () => {
         const newIds = group.bossIds.filter((id) => id !== boss.id);
         if (newIds.length === 0) {
@@ -485,7 +648,13 @@ async function renderMyGroups(container) {
           await DB.deleteGroup(group.id);
           showToast(`${group.name} deleted`);
         } else {
-          await DB.updateGroup(group.id, { bossIds: newIds });
+          const changes = { bossIds: newIds };
+          if (mode === "either" && group.memberGoals) {
+            const mg = { ...group.memberGoals };
+            delete mg[boss.id];
+            changes.memberGoals = mg;
+          }
+          await DB.updateGroup(group.id, changes);
           showToast(`${boss.name} removed from ${group.name}`);
         }
         renderSettings();

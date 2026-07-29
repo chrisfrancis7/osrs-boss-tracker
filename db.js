@@ -98,8 +98,13 @@ const DB = {
       for (const g of groups) {
         if (!g.bossIds.includes(id)) continue;
         const bossIds = g.bossIds.filter((bid) => bid !== id);
-        if (bossIds.length === 0) groupStore.delete(g.id);
-        else groupStore.put({ ...g, bossIds });
+        if (bossIds.length === 0) {
+          groupStore.delete(g.id);
+        } else {
+          const memberGoals = g.memberGoals ? { ...g.memberGoals } : null;
+          if (memberGoals) delete memberGoals[id];
+          groupStore.put({ ...g, bossIds, memberGoals });
+        }
       }
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error);
@@ -116,13 +121,23 @@ const DB = {
     });
   },
 
-  async addGroup({ name, bossIds, goal }) {
+  // mode: "sum" (default) — kills across all members add up to one shared `goal`.
+  // mode: "either" — each member has its own goal in `memberGoals` ({bossId: goal});
+  //   hitting any one member's goal completes the whole group for the day.
+  async addGroup({ name, bossIds, goal, mode, memberGoals }) {
     const groups = await this.getGroups();
     const maxOrder = groups.reduce((m, g) => Math.max(m, g.order ?? 0), -1);
     const t = await tx(["groups"], "readwrite");
     return new Promise((resolve, reject) => {
       const store = t.objectStore("groups");
-      const req = store.add({ name, bossIds, goal: goal ?? 1, order: maxOrder + 1 });
+      const req = store.add({
+        name,
+        bossIds,
+        mode: mode === "either" ? "either" : "sum",
+        goal: goal ?? 1,
+        memberGoals: memberGoals || null,
+        order: maxOrder + 1,
+      });
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
