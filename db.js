@@ -1,9 +1,12 @@
 // IndexedDB wrapper for the Boss Kill Tracker.
 // Stores: bosses {id, name, image, goal, order}
 // kills {key: "date_bossId", date, bossId, count}
+// groups {id, name, bossIds: [bossId], goal, order} — a group's daily count
+//   is the sum of its member bosses' kills for that date; grouping a boss
+//   replaces its individual goal tracking with the group's combined goal.
 
 const DB_NAME = "bossTrackerDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _dbPromise = null;
 
@@ -20,6 +23,9 @@ function openDB() {
         const store = db.createObjectStore("kills", { keyPath: "key" });
         store.createIndex("byDate", "date", { unique: false });
         store.createIndex("byBoss", "bossId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("groups")) {
+        db.createObjectStore("groups", { keyPath: "id", autoIncrement: true });
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -73,9 +79,11 @@ const DB = {
   },
 
   async deleteBoss(id) {
-    const t = await tx(["bosses", "kills"], "readwrite");
+    const groups = await this.getGroups();
+    const t = await tx(["bosses", "kills", "groups"], "readwrite");
     const bossStore = t.objectStore("bosses");
     const killStore = t.objectStore("kills");
+    const groupStore = t.objectStore("groups");
     const idx = killStore.index("byBoss");
     return new Promise((resolve, reject) => {
       bossStore.delete(id);
@@ -87,8 +95,62 @@ const DB = {
           cursor.continue();
         }
       };
+      for (const g of groups) {
+        if (!g.bossIds.includes(id)) continue;
+        const bossIds = g.bossIds.filter((bid) => bid !== id);
+        if (bossIds.length === 0) groupStore.delete(g.id);
+        else groupStore.put({ ...g, bossIds });
+      }
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error);
+    });
+  },
+
+  async getGroups() {
+    const t = await tx(["groups"], "readonly");
+    return new Promise((resolve, reject) => {
+      const store = t.objectStore("groups");
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async addGroup({ name, bossIds, goal }) {
+    const groups = await this.getGroups();
+    const maxOrder = groups.reduce((m, g) => Math.max(m, g.order ?? 0), -1);
+    const t = await tx(["groups"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const store = t.objectStore("groups");
+      const req = store.add({ name, bossIds, goal: goal ?? 1, order: maxOrder + 1 });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async updateGroup(id, changes) {
+    const t = await tx(["groups"], "readwrite");
+    const store = t.objectStore("groups");
+    return new Promise((resolve, reject) => {
+      const getReq = store.get(id);
+      getReq.onsuccess = () => {
+        const group = getReq.result;
+        if (!group) return reject(new Error("Group not found"));
+        Object.assign(group, changes);
+        const putReq = store.put(group);
+        putReq.onsuccess = () => resolve(group);
+        putReq.onerror = () => reject(putReq.error);
+      };
+      getReq.onerror = () => reject(getReq.error);
+    });
+  },
+
+  async deleteGroup(id) {
+    const t = await tx(["groups"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const req = t.objectStore("groups").delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
     });
   },
 
@@ -133,12 +195,13 @@ const DB = {
   },
 
   async exportAll() {
-    const [bosses, kills] = await Promise.all([this.getBosses(), this.getAllKills()]);
+    const [bosses, kills, groups] = await Promise.all([this.getBosses(), this.getAllKills(), this.getGroups()]);
     return {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       bosses,
       kills,
+      groups,
     };
   },
 
@@ -146,14 +209,18 @@ const DB = {
     if (!data || !Array.isArray(data.bosses) || !Array.isArray(data.kills)) {
       throw new Error("Invalid backup file");
     }
-    const t = await tx(["bosses", "kills"], "readwrite");
+    const groups = Array.isArray(data.groups) ? data.groups : [];
+    const t = await tx(["bosses", "kills", "groups"], "readwrite");
     const bossStore = t.objectStore("bosses");
     const killStore = t.objectStore("kills");
+    const groupStore = t.objectStore("groups");
     return new Promise((resolve, reject) => {
       bossStore.clear();
       killStore.clear();
+      groupStore.clear();
       for (const b of data.bosses) bossStore.put(b);
       for (const k of data.kills) killStore.put(k);
+      for (const g of groups) groupStore.put(g);
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error);
     });

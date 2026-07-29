@@ -216,6 +216,78 @@ button.danger-link {
   font-size: 0.85rem;
 }
 
+/* ---- group card (today) ---- */
+.group-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.group-name {
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--accent);
+}
+.group-count-label {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.group-count-label b { color: var(--text); }
+
+.group-members {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.group-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.group-member-row:first-child { padding-top: 0; border-top: none; }
+.group-member-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.group-member-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.group-member-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stepper-btn.small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.95rem;
+}
+.count-input.small {
+  width: 48px;
+  padding: 4px;
+  font-size: 0.9rem;
+}
+
 /* ---- calendar ---- */
 .cal-nav {
   display: flex;
@@ -319,6 +391,57 @@ button.danger-link {
   background: var(--bg-elevated); border-radius: 6px;
 }
 .settings-boss-row .name { flex: 1; font-weight: 600; font-size: 0.92rem; }
+.group-select-checkbox {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.settings-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: -4px 4px 10px;
+}
+
+#create-group-bar { margin-bottom: 16px; }
+#create-group-bar button.primary { width: 100%; }
+
+.group-settings-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.group-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.group-settings-header .name { flex: 1; font-weight: 700; font-size: 0.95rem; color: var(--accent); }
+.group-settings-members {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.group-settings-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.group-settings-member:first-child { padding-top: 0; border-top: none; }
+.group-settings-member img {
+  width: 34px; height: 34px; object-fit: contain;
+  background: var(--bg-elevated); border-radius: 6px;
+}
+.group-settings-member .name { flex: 1; font-size: 0.9rem; }
+
+.form-row { margin-bottom: 12px; }
+.form-row .search-input { margin-bottom: 0; }
+
 .goal-input {
   width: 56px;
   text-align: center;

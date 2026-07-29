@@ -11,6 +11,7 @@ let state = {
   calMonth: new Date().getMonth(),
   calYear: new Date().getFullYear(),
   editingRowId: null, // for settings focus banner
+  groupSelection: new Set(), // boss ids checked in Settings for "create a group"
 };
 
 function todayStr() {
@@ -98,8 +99,70 @@ function renderBossKillCard(boss, count, onChange) {
   return card;
 }
 
+function renderGroupKillCard(group, members, kills, onChangeMember) {
+  const goal = group.goal || 1;
+  const memberCounts = new Map(members.map((b) => [b.id, kills[b.id] || 0]));
+
+  const card = document.createElement("div");
+  card.className = "group-card";
+  card.innerHTML = `
+    <div class="group-header">
+      <div class="group-name">${group.name}</div>
+      <div class="group-count-label"><b></b> / ${goal}</div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+    <div class="group-members"></div>
+  `;
+  const countLabel = card.querySelector(".group-count-label b");
+  const progressFill = card.querySelector(".progress-fill");
+  const membersEl = card.querySelector(".group-members");
+
+  const refreshTotal = () => {
+    const total = members.reduce((sum, b) => sum + memberCounts.get(b.id), 0);
+    const pct = Math.min(100, Math.round((total / goal) * 100));
+    const complete = total >= goal;
+    countLabel.textContent = total;
+    progressFill.style.width = `${pct}%`;
+    progressFill.classList.toggle("complete", complete);
+  };
+
+  for (const boss of members) {
+    const row = document.createElement("div");
+    row.className = "group-member-row";
+    row.innerHTML = `
+      <img class="group-member-img" src="assets/bosses/${boss.image}" alt="${boss.name}">
+      <div class="group-member-name">${boss.name}</div>
+      <div class="group-member-controls">
+        <button class="stepper-btn small" data-act="dec">−</button>
+        <input class="count-input small" type="number" min="0" inputmode="numeric" value="${memberCounts.get(boss.id)}">
+        <button class="stepper-btn small" data-act="inc">+</button>
+      </div>
+    `;
+    const input = row.querySelector(".count-input");
+    const dec = row.querySelector('[data-act="dec"]');
+    const inc = row.querySelector('[data-act="inc"]');
+
+    const commit = (val) => {
+      const n = Math.max(0, parseInt(val, 10) || 0);
+      input.value = n;
+      memberCounts.set(boss.id, n);
+      refreshTotal();
+      onChangeMember(boss.id, n);
+    };
+
+    dec.addEventListener("click", () => commit((parseInt(input.value, 10) || 0) - 1));
+    inc.addEventListener("click", () => commit((parseInt(input.value, 10) || 0) + 1));
+    input.addEventListener("change", () => commit(input.value));
+
+    membersEl.appendChild(row);
+  }
+
+  refreshTotal();
+  return card;
+}
+
 async function renderBossListForDate(container, date) {
-  const [bosses, kills] = await Promise.all([DB.getBosses(), DB.getKillsForDate(date)]);
+  const [bosses, groups, kills] = await Promise.all([DB.getBosses(), DB.getGroups(), DB.getKillsForDate(date)]);
   container.innerHTML = "";
   if (bosses.length === 0) {
     const empty = document.createElement("div");
@@ -108,7 +171,21 @@ async function renderBossListForDate(container, date) {
     container.appendChild(empty);
     return;
   }
+  const bossById = new Map(bosses.map((b) => [b.id, b]));
+  const groupedIds = new Set(groups.flatMap((g) => g.bossIds));
+
+  for (const group of groups) {
+    const members = group.bossIds.map((id) => bossById.get(id)).filter(Boolean);
+    if (members.length === 0) continue;
+    const card = renderGroupKillCard(group, members, kills, async (bossId, n) => {
+      await DB.setKill(date, bossId, n);
+      if (state.tab === "calendar") renderCalendarGrid(); // refresh dots underneath
+    });
+    container.appendChild(card);
+  }
+
   for (const boss of bosses) {
+    if (groupedIds.has(boss.id)) continue;
     const count = kills[boss.id] || 0;
     const card = renderBossKillCard(boss, count, async (n) => {
       await DB.setKill(date, boss.id, n);
@@ -136,8 +213,10 @@ async function renderCalendarGrid() {
   const grid = document.getElementById("cal-grid");
   if (!grid) return;
   const { calYear, calMonth } = state;
-  const bosses = await DB.getBosses();
-  const allKills = await DB.getAllKills();
+  const [bosses, groups, allKills] = await Promise.all([DB.getBosses(), DB.getGroups(), DB.getAllKills()]);
+
+  const groupedIds = new Set(groups.flatMap((g) => g.bossIds));
+  const standaloneBosses = bosses.filter((b) => !groupedIds.has(b.id));
 
   const killsByDate = {};
   for (const k of allKills) {
@@ -159,9 +238,13 @@ async function renderCalendarGrid() {
     const dayKills = killsByDate[dStr] || {};
 
     let dotClass = "none";
-    if (bosses.length > 0) {
-      const anyLogged = bosses.some((b) => (dayKills[b.id] || 0) > 0);
-      const allComplete = bosses.every((b) => (dayKills[b.id] || 0) >= (b.goal || 1));
+    if (standaloneBosses.length > 0 || groups.length > 0) {
+      const groupTotals = groups.map((g) => g.bossIds.reduce((sum, id) => sum + (dayKills[id] || 0), 0));
+      const anyLogged =
+        standaloneBosses.some((b) => (dayKills[b.id] || 0) > 0) || groupTotals.some((t) => t > 0);
+      const allComplete =
+        standaloneBosses.every((b) => (dayKills[b.id] || 0) >= (b.goal || 1)) &&
+        groups.every((g, i) => groupTotals[i] >= (g.goal || 1));
       if (allComplete) dotClass = "complete";
       else if (anyLogged) dotClass = "partial";
     }
@@ -243,17 +326,77 @@ function setEditingBanner(name) {
   }
 }
 
-async function renderMyBosses(container) {
-  const bosses = await DB.getBosses();
-  container.innerHTML = "";
-  if (bosses.length === 0) {
-    container.innerHTML = `<div class="empty-state">No bosses added yet. Add one below.</div>`;
+function updateGroupBar() {
+  const bar = document.getElementById("create-group-bar");
+  if (!bar) return;
+  const n = state.groupSelection.size;
+  if (n < 2) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
     return;
   }
-  for (const boss of bosses) {
+  bar.style.display = "block";
+  bar.innerHTML = `<button class="primary" id="create-group-btn">Group ${n} selected bosses</button>`;
+  document.getElementById("create-group-btn").addEventListener("click", openCreateGroupModal);
+}
+
+function openCreateGroupModal() {
+  const bossIds = [...state.groupSelection];
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <h2>Create Group</h2>
+          <button class="modal-close" id="modal-close">✕</button>
+        </div>
+        <div class="form-row">
+          <div class="goal-label">Group name</div>
+          <input type="text" id="group-name-input" class="search-input" placeholder="e.g. Wilderness bosses">
+        </div>
+        <div class="form-row">
+          <div class="goal-label">Combined daily goal</div>
+          <input type="number" id="group-goal-input" class="goal-input" min="1" inputmode="numeric" value="1">
+        </div>
+        <button class="primary" id="group-create-confirm" style="width:100%;margin-top:14px;">Create Group</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("modal-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "modal-overlay") closeModal();
+  });
+  document.getElementById("group-create-confirm").addEventListener("click", async () => {
+    const name = document.getElementById("group-name-input").value.trim();
+    const goal = Math.max(1, parseInt(document.getElementById("group-goal-input").value, 10) || 1);
+    if (!name) {
+      alert("Please enter a group name.");
+      return;
+    }
+    await DB.addGroup({ name, bossIds, goal });
+    state.groupSelection.clear();
+    showToast(`${name} group created`);
+    closeModal();
+    renderSettings();
+  });
+}
+
+async function renderMyBosses(container) {
+  const [bosses, groups] = await Promise.all([DB.getBosses(), DB.getGroups()]);
+  const groupedIds = new Set(groups.flatMap((g) => g.bossIds));
+  const standalone = bosses.filter((b) => !groupedIds.has(b.id));
+  container.innerHTML = "";
+  if (standalone.length === 0) {
+    container.innerHTML = `<div class="empty-state">${
+      bosses.length === 0 ? "No bosses added yet. Add one below." : "All your bosses are in groups below."
+    }</div>`;
+    updateGroupBar();
+    return;
+  }
+  for (const boss of standalone) {
     const row = document.createElement("div");
     row.className = "settings-boss-row";
     row.innerHTML = `
+      <input type="checkbox" class="group-select-checkbox" ${state.groupSelection.has(boss.id) ? "checked" : ""}>
       <img src="assets/bosses/${boss.image}" alt="${boss.name}">
       <div class="name">${boss.name}</div>
       <div>
@@ -262,6 +405,12 @@ async function renderMyBosses(container) {
       </div>
       <button class="danger-link" data-act="remove">Remove</button>
     `;
+    const checkbox = row.querySelector(".group-select-checkbox");
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.groupSelection.add(boss.id);
+      else state.groupSelection.delete(boss.id);
+      updateGroupBar();
+    });
     const goalInput = row.querySelector(".goal-input");
     goalInput.addEventListener("focus", () => setEditingBanner(boss.name));
     goalInput.addEventListener("blur", () => setEditingBanner(null));
@@ -273,12 +422,77 @@ async function renderMyBosses(container) {
     });
     row.querySelector('[data-act="remove"]').addEventListener("click", async () => {
       if (confirm(`Remove ${boss.name} and all its recorded kills?`)) {
+        state.groupSelection.delete(boss.id);
         await DB.deleteBoss(boss.id);
         showToast(`${boss.name} removed`);
-        renderMyBosses(container);
+        renderSettings();
       }
     });
     container.appendChild(row);
+  }
+  updateGroupBar();
+}
+
+async function renderMyGroups(container) {
+  const [bosses, groups] = await Promise.all([DB.getBosses(), DB.getGroups()]);
+  const bossById = new Map(bosses.map((b) => [b.id, b]));
+  container.innerHTML = "";
+  if (groups.length === 0) {
+    container.innerHTML = `<div class="empty-state">No groups yet. Select 2 or more bosses above to combine them.</div>`;
+    return;
+  }
+  for (const group of groups) {
+    const members = group.bossIds.map((id) => bossById.get(id)).filter(Boolean);
+    const card = document.createElement("div");
+    card.className = "group-settings-card";
+    card.innerHTML = `
+      <div class="group-settings-header">
+        <div class="name">${group.name}</div>
+        <div>
+          <div class="goal-label">Combined goal</div>
+          <input class="goal-input group-goal-input" type="number" min="1" inputmode="numeric" value="${group.goal || 1}">
+        </div>
+        <button class="danger-link" data-act="delete-group">Delete group</button>
+      </div>
+      <div class="group-settings-members"></div>
+    `;
+    card.querySelector(".group-goal-input").addEventListener("change", async (e) => {
+      const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+      e.target.value = n;
+      await DB.updateGroup(group.id, { goal: n });
+      showToast(`${group.name} goal set to ${n}`);
+    });
+    card.querySelector('[data-act="delete-group"]').addEventListener("click", async () => {
+      if (confirm(`Delete "${group.name}"? Its bosses will go back to being tracked individually.`)) {
+        await DB.deleteGroup(group.id);
+        showToast(`${group.name} deleted`);
+        renderSettings();
+      }
+    });
+    const membersEl = card.querySelector(".group-settings-members");
+    for (const boss of members) {
+      const memberRow = document.createElement("div");
+      memberRow.className = "group-settings-member";
+      memberRow.innerHTML = `
+        <img src="assets/bosses/${boss.image}" alt="${boss.name}">
+        <div class="name">${boss.name}</div>
+        <button class="danger-link" data-act="remove-member">Remove</button>
+      `;
+      memberRow.querySelector('[data-act="remove-member"]').addEventListener("click", async () => {
+        const newIds = group.bossIds.filter((id) => id !== boss.id);
+        if (newIds.length === 0) {
+          if (!confirm(`Remove ${boss.name}? This will delete the empty group "${group.name}".`)) return;
+          await DB.deleteGroup(group.id);
+          showToast(`${group.name} deleted`);
+        } else {
+          await DB.updateGroup(group.id, { bossIds: newIds });
+          showToast(`${boss.name} removed from ${group.name}`);
+        }
+        renderSettings();
+      });
+      membersEl.appendChild(memberRow);
+    }
+    container.appendChild(card);
   }
 }
 
@@ -317,7 +531,12 @@ function renderSettings() {
   viewRoot.innerHTML = `
     <div id="editing-banner" class="editing-banner" style="display:none"></div>
     <div class="section-title">My Bosses</div>
+    <div class="settings-hint">Check 2 or more to combine them into a group goal.</div>
     <div id="my-bosses-list"></div>
+    <div id="create-group-bar" style="display:none"></div>
+
+    <div class="section-title">My Groups</div>
+    <div id="my-groups-list"></div>
 
     <div class="section-title">Add a Boss</div>
     <input class="search-input" id="catalog-search" placeholder="Search bosses…">
@@ -331,6 +550,7 @@ function renderSettings() {
     <input type="file" id="import-file" accept="application/json" style="display:none">
   `;
   renderMyBosses(document.getElementById("my-bosses-list"));
+  renderMyGroups(document.getElementById("my-groups-list"));
   renderCatalogList(document.getElementById("catalog-list"), "");
 
   document.getElementById("catalog-search").addEventListener("input", (e) => {
@@ -373,6 +593,7 @@ function renderSettings() {
 // ---------------- Tab routing ----------------
 
 function setActiveTab(tab) {
+  if (state.tab === "settings" && tab !== "settings") state.groupSelection.clear();
   state.tab = tab;
   tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   closeModal();
