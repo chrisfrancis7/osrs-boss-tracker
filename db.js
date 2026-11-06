@@ -1,12 +1,17 @@
-// IndexedDB wrapper for the Boss Kill Tracker.
+// IndexedDB wrapper for OSRS Tools.
 // Stores: bosses {id, name, image, goal, order}
 // kills {key: "date_bossId", date, bossId, count}
 // groups {id, name, bossIds: [bossId], goal, order} — a group's daily count
 //   is the sum of its member bosses' kills for that date; grouping a boss
 //   replaces its individual goal tracking with the group's combined goal.
+// meta {key, value} — small key/value settings for Hours to Max:
+//   "rsn"   → string
+//   "rates" → { [skillKey]: xpPerHour }
+//   "stats" → { skills: { [skillKey]: experience }, displayName, syncedAt, snapshotAt }
+//   "pace"  → hours played per day (number)
 
-const DB_NAME = "bossTrackerDB";
-const DB_VERSION = 2;
+const DB_NAME = "osrsToolsDB";
+const DB_VERSION = 1;
 
 let _dbPromise = null;
 
@@ -26,6 +31,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains("groups")) {
         db.createObjectStore("groups", { keyPath: "id", autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains("meta")) {
+        db.createObjectStore("meta", { keyPath: "key" });
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -209,14 +217,51 @@ const DB = {
     });
   },
 
+  async getMeta(key) {
+    const t = await tx(["meta"], "readonly");
+    return new Promise((resolve, reject) => {
+      const req = t.objectStore("meta").get(key);
+      req.onsuccess = () => resolve(req.result ? req.result.value : undefined);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async setMeta(key, value) {
+    const t = await tx(["meta"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const req = t.objectStore("meta").put({ key, value });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async getAllMeta() {
+    const t = await tx(["meta"], "readonly");
+    return new Promise((resolve, reject) => {
+      const req = t.objectStore("meta").getAll();
+      req.onsuccess = () => {
+        const out = {};
+        for (const row of req.result) out[row.key] = row.value;
+        resolve(out);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
   async exportAll() {
-    const [bosses, kills, groups] = await Promise.all([this.getBosses(), this.getAllKills(), this.getGroups()]);
+    const [bosses, kills, groups, meta] = await Promise.all([
+      this.getBosses(),
+      this.getAllKills(),
+      this.getGroups(),
+      this.getAllMeta(),
+    ]);
     return {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       bosses,
       kills,
       groups,
+      meta,
     };
   },
 
@@ -225,10 +270,13 @@ const DB = {
       throw new Error("Invalid backup file");
     }
     const groups = Array.isArray(data.groups) ? data.groups : [];
-    const t = await tx(["bosses", "kills", "groups"], "readwrite");
+    // Backups from before v3 have no "meta"; keep the current RSN/rates/stats in that case.
+    const meta = data.meta && typeof data.meta === "object" ? data.meta : null;
+    const t = await tx(["bosses", "kills", "groups", "meta"], "readwrite");
     const bossStore = t.objectStore("bosses");
     const killStore = t.objectStore("kills");
     const groupStore = t.objectStore("groups");
+    const metaStore = t.objectStore("meta");
     return new Promise((resolve, reject) => {
       bossStore.clear();
       killStore.clear();
@@ -236,6 +284,10 @@ const DB = {
       for (const b of data.bosses) bossStore.put(b);
       for (const k of data.kills) killStore.put(k);
       for (const g of groups) groupStore.put(g);
+      if (meta) {
+        metaStore.clear();
+        for (const [key, value] of Object.entries(meta)) metaStore.put({ key, value });
+      }
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error);
     });

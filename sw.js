@@ -1,4 +1,4 @@
-const CACHE_NAME = "boss-tracker-v4";
+const CACHE_NAME = "osrs-tools-v1";
 const PRECACHE_URLS = [
   "./",
   "index.html",
@@ -100,6 +100,10 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // Only cache this app's own files. API calls (e.g. Wise Old Man) and
+  // non-GET requests always go straight to the network.
+  if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

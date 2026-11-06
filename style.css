@@ -39,6 +39,16 @@ body {
   position: sticky;
   top: 0;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 2px 4px 2px 0;
 }
 .app-header h1 {
   margin: 0;
@@ -601,3 +611,197 @@ button.danger-link {
   pointer-events: none;
 }
 .toast.show { opacity: 1; }
+
+/* ---- segmented control (Boss Tracker: Today / Calendar) ---- */
+.seg {
+  display: flex;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+.seg-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.seg-btn.active { background: var(--bg-card); color: var(--accent); }
+
+/* ---- home ---- */
+.home-rsn {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin: 4px 4px 12px;
+}
+.tool-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.tool-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 12px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+}
+.tool-tile:active { border-color: var(--accent-dim); }
+.tool-name { font-weight: 700; font-size: 0.98rem; }
+.tool-sub { font-size: 0.78rem; color: var(--text-dim); }
+.tool-value {
+  margin-top: auto;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- hours to max ---- */
+.max-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.pace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.pace-row .goal-input { width: 60px; }
+.max-date { font-size: 1.6rem; font-weight: 800; color: var(--accent); }
+.max-big { font-size: 2.2rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.max-big small { font-size: 0.9rem; color: var(--text-dim); font-weight: 600; margin-left: 6px; }
+.max-sub {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.hours-stack {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  gap: 2px;
+}
+.hours-stack span { display: block; height: 100%; min-width: 2px; }
+.unrated-note { font-size: 0.78rem; color: var(--warn); }
+.sync-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.sync-error { font-size: 0.8rem; color: var(--danger); }
+.sync-error:empty { display: none; }
+.small-btn {
+  background: none;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+.small-btn:disabled { opacity: 0.5; }
+
+.skill-rows { display: flex; flex-direction: column; gap: 8px; }
+.skill-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.skill-row .progress-track { grid-column: 1 / -1; margin-top: 0; height: 6px; }
+.skill-row-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.skill-dot { font-size: 0.8rem; }
+.skill-row-lvl { font-size: 0.74rem; color: var(--text-dim); font-weight: 600; }
+.skill-row-hours { font-weight: 800; font-size: 1rem; color: var(--accent); }
+.skill-row-hours small { font-size: 0.72rem; color: var(--text-dim); font-weight: 600; }
+.skill-row-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+.skill-row.unrated { border-style: dashed; }
+.maxed-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+/* ---- settings: account & rates ---- */
+.rsn-row { display: flex; gap: 8px; }
+.rsn-row .search-input { margin-bottom: 0; flex: 1; min-width: 0; }
+.rsn-row button { flex-shrink: 0; }
+.sync-status { font-size: 0.78rem; color: var(--text-dim); margin: 8px 4px 12px; line-height: 1.4; }
+.sync-status.error { color: var(--danger); }
+.rates-list {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 12px;
+  margin-bottom: 8px;
+}
+.rate-row {
+  display: grid;
+  grid-template-columns: 1fr 36px 104px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+.rate-row:last-child { border-bottom: none; }
+.rate-level { color: var(--text-dim); font-size: 0.82rem; text-align: right; }
+.rate-input {
+  width: 100%;
+  text-align: right;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 0.92rem;
+}
+.rate-maxed { text-align: right; font-size: 0.8rem; color: var(--good); }
+.rate-row.maxed { opacity: 0.5; }

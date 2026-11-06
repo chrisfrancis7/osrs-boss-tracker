@@ -1,7 +1,7 @@
 {
-  "name": "Boss Kill Tracker",
-  "short_name": "Boss Tracker",
-  "description": "Track daily OSRS boss kills against goals",
+  "name": "OSRS Tools",
+  "short_name": "OSRS Tools",
+  "description": "Personal Old School RuneScape tools: daily boss kill goals and hours to max",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
