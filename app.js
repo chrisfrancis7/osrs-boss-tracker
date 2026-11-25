@@ -522,9 +522,10 @@ async function syncStats() {
   return stats;
 }
 
-// Skills at 99 are left out. A skill below 99 with no rate is "unrated" and
-// does not count toward the total.
-function computeMax(stats, rates) {
+// Skills at 99 are left out. A skill below 99 with no rate is "unrated", and a
+// skill the user excluded in Settings is "excluded"; neither counts toward the total.
+function computeMax(stats, rates, excludedKeys = []) {
+  const excludedSet = new Set(excludedKeys);
   const rows = [];
   let maxedCount = 0;
   for (const s of SKILLS) {
@@ -537,11 +538,14 @@ function computeMax(stats, rates) {
     const left = MAX_XP - xp;
     rows.push({ ...s, xp, left, rate, level: levelForXp(xp), hours: rate > 0 ? left / rate : null });
   }
-  const rated = rows.filter((r) => r.hours !== null).sort((a, b) => b.hours - a.hours);
-  const unrated = rows.filter((r) => r.hours === null);
+  const excluded = rows.filter((r) => excludedSet.has(r.key));
+  const counted = rows.filter((r) => !excludedSet.has(r.key));
+  const rated = counted.filter((r) => r.hours !== null).sort((a, b) => b.hours - a.hours);
+  const unrated = counted.filter((r) => r.hours === null);
   return {
     rated,
     unrated,
+    excluded,
     maxedCount,
     totalHours: rated.reduce((sum, r) => sum + r.hours, 0),
     xpLeft: rated.reduce((sum, r) => sum + r.left, 0),
@@ -576,7 +580,7 @@ async function renderHome() {
   let maxValue = "Set up";
   let maxSub = meta.rsn ? "Sync your stats" : "Add your RSN in Settings";
   if (meta.stats) {
-    const m = computeMax(meta.stats, meta.rates || {});
+    const m = computeMax(meta.stats, meta.rates || {}, meta.excluded || []);
     if (m.rated.length === 0 && m.unrated.length > 0) {
       maxSub = "Set your xp/h rates";
     } else {
@@ -624,7 +628,7 @@ async function renderMax() {
     return;
   }
 
-  const m = computeMax(meta.stats, meta.rates || {});
+  const m = computeMax(meta.stats, meta.rates || {}, meta.excluded || []);
   const pace = Number(meta.pace) > 0 ? Number(meta.pace) : 2;
   const total = m.totalHours;
   const hasRated = m.rated.length > 0;
@@ -643,7 +647,9 @@ async function renderMax() {
     : "";
 
   const summaryTop = toNinetyNine === 0
-    ? `<div class="max-big">Maxed!</div><div class="max-sub">Every skill is 99.</div>`
+    ? m.excluded.length
+      ? `<div class="max-sub">Every skill below 99 is excluded in Settings.</div>`
+      : `<div class="max-big">Maxed!</div><div class="max-sub">Every skill is 99.</div>`
     : hasRated
       ? `<div class="max-big">${fmtInt(total)}<small>hours</small></div>
          <div class="max-sub"><span>${fmtInt(m.xpLeft)} XP left</span><span>${m.rated.length} skill${m.rated.length === 1 ? "" : "s"} to 99</span></div>
@@ -655,12 +661,16 @@ async function renderMax() {
   const unratedNote = m.unrated.length
     ? `<div class="unrated-note">${m.unrated.length} skill${m.unrated.length === 1 ? "" : "s"} not counted (no rate): ${m.unrated.map((r) => r.name).join(", ")}</div>`
     : "";
+  const excludedNote = m.excluded.length
+    ? `<div class="unrated-note excluded-note">${m.excluded.length} skill${m.excluded.length === 1 ? "" : "s"} excluded in Settings: ${m.excluded.map((r) => r.name).join(", ")}</div>`
+    : "";
 
   viewRoot.innerHTML = `
     ${paceCard}
     <div class="max-card">
       ${summaryTop}
       ${unratedNote}
+      ${excludedNote}
       <div class="sync-line">
         <span>Wise Old Man data from ${timeAgo(meta.stats.snapshotAt || meta.stats.syncedAt)}</span>
         <button type="button" class="small-btn" id="max-refresh">Refresh</button>
@@ -669,17 +679,25 @@ async function renderMax() {
     </div>
     <div class="skill-rows">
       ${m.rated.map((r, i) => `
-        <div class="skill-row">
+        <div class="skill-row expandable" data-skill="${r.key}" role="button" tabindex="0" aria-expanded="${openSkills.has(r.key)}">
           <div class="skill-row-name"><span class="skill-dot" style="color:${SKILL_COLORS[i % SKILL_COLORS.length]}">●</span>${r.name}<span class="skill-row-lvl">Lv ${r.level}</span></div>
-          <div class="skill-row-hours">${r.hours.toFixed(1)} <small>h</small></div>
+          <div class="skill-row-hours">${r.hours.toFixed(1)} <small>h</small><span class="skill-chevron">▾</span></div>
           <div class="progress-track"><div class="progress-fill complete" style="width:${((r.xp / MAX_XP) * 100).toFixed(1)}%"></div></div>
-          <div class="skill-row-meta"><span>${fmtInt(r.left)} XP left</span><span>${fmtInt(r.rate)} xp/h · ${Math.round((r.hours / total) * 100)}%</span></div>
+          <div class="skill-row-meta"><span>${fmtInt(r.left)} XP left · ${pctDone(r)}</span><span>${fmtInt(r.rate)} xp/h</span></div>
+          ${levelBreakdown(r)}
         </div>`).join("")}
       ${m.unrated.map((r) => `
         <div class="skill-row unrated">
           <div class="skill-row-name">${r.name}<span class="skill-row-lvl">Lv ${r.level}</span></div>
           <button type="button" class="small-btn" data-act="set-rate">No rate set</button>
-          <div class="skill-row-meta"><span>${fmtInt(r.left)} XP left</span><span>Not counted</span></div>
+          <div class="skill-row-meta"><span>${fmtInt(r.left)} XP left · ${pctDone(r)}</span><span>Not counted</span></div>
+        </div>`).join("")}
+      ${m.excluded.map((r) => `
+        <div class="skill-row excluded ${r.hours !== null ? "expandable" : ""}" data-skill="${r.key}" ${r.hours !== null ? `role="button" tabindex="0" aria-expanded="${openSkills.has(r.key)}"` : ""}>
+          <div class="skill-row-name">${r.name}<span class="skill-row-lvl">Lv ${r.level}</span></div>
+          <div class="skill-row-hours">${r.hours !== null ? `${r.hours.toFixed(1)} <small>h</small><span class="skill-chevron">▾</span>` : ""}</div>
+          <div class="skill-row-meta"><span>${fmtInt(r.left)} XP left · ${pctDone(r)}</span><span>Excluded${r.hours !== null ? ` · ${fmtInt(r.rate)} xp/h` : ""}</span></div>
+          ${r.hours !== null ? levelBreakdown(r) : ""}
         </div>`).join("")}
     </div>
     ${m.maxedCount ? `<div class="maxed-note">${m.maxedCount} skill${m.maxedCount === 1 ? "" : "s"} already 99</div>` : ""}
@@ -707,6 +725,56 @@ async function renderMax() {
   }
   document.getElementById("max-refresh").addEventListener("click", (e) => runMaxSync(e.currentTarget));
   viewRoot.querySelectorAll('[data-act="set-rate"]').forEach((b) => b.addEventListener("click", () => navigate("settings")));
+  viewRoot.querySelectorAll(".skill-row.expandable").forEach((row) => {
+    row.classList.toggle("open", openSkills.has(row.dataset.skill));
+    const toggle = () => {
+      const open = row.classList.toggle("open");
+      row.setAttribute("aria-expanded", open);
+      if (open) openSkills.add(row.dataset.skill);
+      else openSkills.delete(row.dataset.skill);
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  });
+}
+
+// Skills whose level breakdown is expanded; kept across re-renders (e.g. Refresh).
+const openSkills = new Set();
+
+// Share of the XP to 99 already earned, e.g. "56%" or "97.4%". Rounded down
+// (one decimal from 90% up) so a skill short of 99 never shows 100%.
+function pctDone(r) {
+  const pct = (r.xp / MAX_XP) * 100;
+  return `${pct >= 90 ? (Math.floor(pct * 10) / 10).toFixed(1) : Math.floor(pct)}%`;
+}
+
+// Accordion body: hours for each level from the current one up to 99, at the
+// skill's flat xp/h rate. The first level only counts the XP still needed.
+function levelBreakdown(r) {
+  let cumulative = 0;
+  const rows = [];
+  for (let lvl = r.level; lvl < 99; lvl++) {
+    const xp = XP_FOR_LEVEL[lvl + 1] - Math.max(r.xp, XP_FOR_LEVEL[lvl]);
+    const hours = xp / r.rate;
+    cumulative += hours;
+    rows.push(`<tr><td>${lvl} → ${lvl + 1}</td><td>${fmtInt(xp)}</td><td>${fmtHours(hours)}</td><td>${fmtHours(cumulative)}</td></tr>`);
+  }
+  return `
+    <div class="level-breakdown">
+      <table>
+        <thead><tr><th>Level</th><th>XP</th><th>Hours</th><th>Total</th></tr></thead>
+        <tbody>${rows.join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+function fmtHours(h) {
+  return h < 10 ? h.toFixed(2) : h.toFixed(1);
 }
 
 async function runMaxSync(btn) {
@@ -739,6 +807,7 @@ async function renderAccountSection(container) {
   const meta = await DB.getAllMeta();
   const stats = meta.stats;
   const rates = meta.rates || {};
+  const excluded = new Set(meta.excluded || []);
 
   container.innerHTML = `
     <div class="rsn-row">
@@ -746,18 +815,23 @@ async function renderAccountSection(container) {
       <button type="button" class="primary" id="sync-btn">Sync</button>
     </div>
     <div class="sync-status" id="sync-status">${escapeHtml(syncStatusText(stats))}</div>
-    <div class="settings-hint">The xp/h you expect to get in each skill. Leave a skill blank to leave it out of Hours to Max.</div>
+    <div class="settings-hint">The xp/h you expect to get in each skill. Untick <b>Count</b> to leave a skill out of the Hours to Max total (or leave its rate blank).</div>
+    <div class="rate-row rate-head" aria-hidden="true"><span>Skill</span><span>Lv</span><span>xp/h</span><span>Count</span></div>
     <div class="rates-list">
       ${SKILLS.map((s) => {
         const xp = stats ? stats.skills[s.key] || 0 : null;
         const maxed = xp !== null && xp >= MAX_XP;
+        const isExcluded = excluded.has(s.key);
         return `
-          <div class="rate-row ${maxed ? "maxed" : ""}">
+          <div class="rate-row ${maxed ? "maxed" : ""} ${!maxed && isExcluded ? "excluded" : ""}">
             <label for="rate-${s.key}">${s.name}</label>
             <span class="rate-level">${xp === null ? "–" : levelForXp(xp)}</span>
             ${maxed
               ? `<span class="rate-maxed">Maxed</span>`
               : `<input id="rate-${s.key}" class="rate-input" data-skill="${s.key}" type="number" min="0" step="1000" inputmode="numeric" placeholder="xp/h" value="${rates[s.key] || ""}">`}
+            ${maxed
+              ? `<span></span>`
+              : `<input type="checkbox" class="rate-count" data-skill="${s.key}" aria-label="Count ${s.name} toward Hours to Max" ${isExcluded ? "" : "checked"}>`}
           </div>`;
       }).join("")}
     </div>
@@ -806,6 +880,18 @@ async function renderAccountSection(container) {
       else delete current[skill.key];
       await DB.setMeta("rates", current);
       showToast(n ? `${skill.name}: ${fmtInt(n)} xp/h` : `${skill.name} rate cleared`);
+    });
+  });
+
+  container.querySelectorAll(".rate-count").forEach((box) => {
+    const skill = SKILLS.find((s) => s.key === box.dataset.skill);
+    box.addEventListener("change", async () => {
+      const current = new Set((await DB.getMeta("excluded")) || []);
+      if (box.checked) current.delete(skill.key);
+      else current.add(skill.key);
+      await DB.setMeta("excluded", [...current]);
+      box.closest(".rate-row").classList.toggle("excluded", !box.checked);
+      showToast(box.checked ? `${skill.name} counted` : `${skill.name} excluded`);
     });
   });
 }

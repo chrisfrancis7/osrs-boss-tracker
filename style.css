@@ -758,6 +758,27 @@ button.danger-link {
   color: var(--text-dim);
 }
 .skill-row.unrated { border-style: dashed; }
+.skill-row.excluded { border-style: dashed; opacity: 0.6; }
+.skill-row.expandable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.skill-row-hours { display: flex; align-items: baseline; gap: 4px; }
+.skill-chevron { font-size: 0.75rem; color: var(--text-dim); transition: transform 0.15s; display: inline-block; }
+.skill-row.open .skill-chevron { transform: rotate(180deg); }
+.level-breakdown { display: none; grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 6px; }
+.skill-row.open .level-breakdown { display: block; }
+.level-breakdown table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.level-breakdown th {
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 0 4px;
+}
+.level-breakdown td { text-align: right; padding: 3px 0; border-top: 1px solid rgba(255, 255, 255, 0.04); }
+.level-breakdown th:first-child, .level-breakdown td:first-child { text-align: left; }
+.level-breakdown td:nth-child(3) { color: var(--accent); font-weight: 700; }
+.level-breakdown td:last-child { color: var(--text-dim); }
 .maxed-note {
   text-align: center;
   font-size: 0.8rem;
@@ -783,7 +804,7 @@ button.danger-link {
 }
 .rate-row {
   display: grid;
-  grid-template-columns: 1fr 36px 104px;
+  grid-template-columns: 1fr 36px 104px 40px;
   align-items: center;
   gap: 10px;
   padding: 7px 0;
@@ -805,3 +826,8 @@ button.danger-link {
 }
 .rate-maxed { text-align: right; font-size: 0.8rem; color: var(--good); }
 .rate-row.maxed { opacity: 0.5; }
+.rate-row.excluded label, .rate-row.excluded .rate-level, .rate-row.excluded .rate-input { opacity: 0.45; }
+.rate-head { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 12px 4px; border-bottom: none; }
+.rate-head span:not(:first-child) { text-align: right; }
+.rate-head span:last-child { text-align: center; }
+.rate-count { justify-self: center; width: 20px; height: 20px; accent-color: var(--accent); }

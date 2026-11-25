@@ -20,7 +20,7 @@ Bottom tabs are **Home** and **Settings**. Home shows a tile per tool; tools ope
   - `bosses`: `{ id, name, image, goal, order }`
   - `kills`: keyed by `` `${date}_${bossId}` ``, `{ key, date, bossId, count }`
   - `groups`: `{ id, name, bossIds, mode: "sum"|"either", goal, memberGoals, order }`
-  - `meta`: key/value (`{ key, value }`) for Hours to Max — `rsn`, `rates` (`{ skillKey: xpPerHour }`), `stats` (`{ skills: { skillKey: xp }, displayName, syncedAt, snapshotAt }`), `pace` (hours/day).
+  - `meta`: key/value (`{ key, value }`) for Hours to Max — `rsn`, `rates` (`{ skillKey: xpPerHour }`), `stats` (`{ skills: { skillKey: xp }, displayName, syncedAt, snapshotAt }`), `pace` (hours/day), `excluded` (array of skill keys left out of the total via the Count checkbox in Settings).
 - `sw.js` — service worker; cache-first strategy for same-origin GETs only, precaches the app shell and all boss images for offline use. Cross-origin requests (Wise Old Man API) bypass it. Bump `CACHE_NAME` when precached assets change.
 - `manifest.json` — PWA manifest (installable, standalone display, portrait).
 - `assets/bosses/*.png` + `assets/bosses/manifest.json` — the boss image catalog (name + image filename) used to populate the "Add a Boss" search list in Settings.

@@ -1,4 +1,4 @@
-const CACHE_NAME = "osrs-tools-v1";
+const CACHE_NAME = "osrs-tools-v2";
 const PRECACHE_URLS = [
   "./",
   "index.html",
